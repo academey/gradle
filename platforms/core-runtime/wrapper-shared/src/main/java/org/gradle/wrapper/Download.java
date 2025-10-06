@@ -121,6 +121,12 @@ public class Download implements IDownload {
 
             // No proxy is passed here as proxies are set globally using the HTTP(S) proxy system properties. The respective protocol handler implementation then makes use of these properties.
             conn = safeUrl.openConnection();
+            if (conn instanceof HttpURLConnection) {
+                int responseCode = ((HttpURLConnection) conn).getResponseCode();
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    throw new IOException("Could not GET '" + safeUrl + "'. Received status code " + responseCode + " from server.");
+                }
+            }
 
             addBasicAuthentication(address, conn);
             final String userAgentValue = calculateUserAgent();
