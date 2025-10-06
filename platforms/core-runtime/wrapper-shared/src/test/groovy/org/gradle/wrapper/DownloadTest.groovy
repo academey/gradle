@@ -17,6 +17,7 @@
 package org.gradle.wrapper
 
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.junit.Rule
 import spock.lang.Specification
 
@@ -24,6 +25,9 @@ class DownloadTest extends Specification {
 
     @Rule
     TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider(getClass());
+
+    @Rule
+    BlockingHttpServer server = new BlockingHttpServer()
 
     def "downloads file"() {
         given:
@@ -38,6 +42,63 @@ class DownloadTest extends Specification {
         then:
         destination.exists()
         destination.text == 'sometext'
+    }
+
+    def "fails with clear error message on HTTP 404"() {
+        given:
+        server.start()
+        def destination = tmpDir.file('destinationDir/file')
+        def downloadUrl = new URI("${server.uri}/gradle-dist.zip")
+
+        and:
+        server.expect(server.get("/gradle-dist.zip").sendError(404, "Not Found"))
+
+        when:
+        def download = new Download(new Logger(true), "gradlew", "aVersion")
+        download.download(downloadUrl, destination)
+
+        then:
+        def ex = thrown(IOException)
+        ex.message.contains("Download failed with HTTP status code: 404")
+        !destination.exists()
+    }
+
+    def "fails with clear error message on HTTP 302 redirect"() {
+        given:
+        server.start()
+        def destination = tmpDir.file('destinationDir/file')
+        def downloadUrl = new URI("${server.uri}/gradle-dist.zip")
+
+        and:
+        server.expect(server.get("/gradle-dist.zip").sendError(302, "Found"))
+
+        when:
+        def download = new Download(new Logger(true), "gradlew", "aVersion")
+        download.download(downloadUrl, destination)
+
+        then:
+        def ex = thrown(IOException)
+        ex.message.contains("Download failed with HTTP status code: 302")
+        !destination.exists()
+    }
+
+    def "fails with clear error message on HTTP 500 server error"() {
+        given:
+        server.start()
+        def destination = tmpDir.file('destinationDir/file')
+        def downloadUrl = new URI("${server.uri}/gradle-dist.zip")
+
+        and:
+        server.expect(server.get("/gradle-dist.zip").sendError(500, "Internal Server Error"))
+
+        when:
+        def download = new Download(new Logger(true), "gradlew", "aVersion")
+        download.download(downloadUrl, destination)
+
+        then:
+        def ex = thrown(IOException)
+        ex.message.contains("Download failed with HTTP status code: 500")
+        !destination.exists()
     }
 
 }
