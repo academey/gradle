@@ -113,21 +113,35 @@ public class Download implements IDownload {
     private void downloadInternal(URI address, File destination)
         throws Exception {
         OutputStream out = null;
-        URLConnection conn;
+        URLConnection conn = null;
+        HttpURLConnection httpConn = null;
         InputStream in = null;
         URL safeUrl = safeUri(address).toURL();
         try {
-            out = new BufferedOutputStream(new FileOutputStream(destination));
-
             // No proxy is passed here as proxies are set globally using the HTTP(S) proxy system properties. The respective protocol handler implementation then makes use of these properties.
             conn = safeUrl.openConnection();
+            if (conn instanceof HttpURLConnection) {
+                httpConn = (HttpURLConnection) conn;
+            }
 
             addBasicAuthentication(address, conn);
             final String userAgentValue = calculateUserAgent();
             conn.setRequestProperty("User-Agent", userAgentValue);
             conn.setConnectTimeout(networkTimeout);
             conn.setReadTimeout(networkTimeout);
+            conn.connect();
+
+            if (httpConn != null) {
+                int responseCode = httpConn.getResponseCode();
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    String responseMessage = httpConn.getResponseMessage();
+                    String responseText = responseMessage == null || responseMessage.isEmpty() ? "" : " (" + responseMessage + ")";
+                    throw new IOException("Downloading from " + safeUrl + " failed: HTTP status code " + responseCode + responseText);
+                }
+            }
+
             in = conn.getInputStream();
+            out = new BufferedOutputStream(new FileOutputStream(destination));
             byte[] buffer = new byte[BUFFER_SIZE];
             int numRead;
             int totalLength = conn.getContentLength();
@@ -157,6 +171,9 @@ public class Download implements IDownload {
             }
             if (out != null) {
                 out.close();
+            }
+            if (httpConn != null) {
+                httpConn.disconnect();
             }
         }
     }
